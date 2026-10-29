@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0B1020;
+  --bg-secondary: #111827;
+  --bg-card: #161E2E;
+  --accent-emerald: #35D399;
+  --accent-sky: #60A5FA;
+  --text-main: #F8FAFC;
+  --text-muted: #94A3B8;
+  --border-main: #293548;
+}
+
+html {
+  scroll-behavior: smooth;
+  background-color: #0B1020;
+  color: #F8FAFC;
+}
+
+body {
+  background-color: #0B1020;
+  color: #F8FAFC;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .t254-card {
+    @apply bg-[#161E2E] border border-[#293548] rounded-2xl transition-all duration-200;
+  }
+  .t254-input {
+    @apply w-full rounded-xl bg-[#0B1020] border border-[#293548] px-4 py-2.5 text-sm text-[#F8FAFC] placeholder-[#94A3B8]/60 focus:border-[#35D399] focus:outline-none focus:ring-1 focus:ring-[#35D399] transition;
+  }
+  .t254-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-[#35D399] px-5 py-2.5 text-sm font-semibold text-[#0B1020] hover:bg-[#10B981] active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none transition;
+  }
+  .t254-btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-[#161E2E] border border-[#293548] px-5 py-2.5 text-sm font-semibold text-[#F8FAFC] hover:border-[#60A5FA] hover:text-[#60A5FA] transition;
+  }
+}

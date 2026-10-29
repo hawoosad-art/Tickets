@@ -1,0 +1,724 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  SUPPORT_AGENT
+  TICKET_SCANNER
+  EVENT_MANAGER
+  FINANCE_MANAGER
+  SUPER_ADMIN
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+  POSTPONED
+  CANCELLED
+  COMPLETED
+}
+
+enum InventorySourceType {
+  NATIVE
+  EXTERNAL_ORGANISER
+}
+
+enum ReservationStatus {
+  ACTIVE
+  CONVERTED
+  RELEASED
+  EXPIRED
+}
+
+enum OrderStatus {
+  PENDING
+  AWAITING_PAYMENT
+  PAID
+  TICKETS_ISSUED
+  PARTIALLY_REFUNDED
+  REFUNDED
+  CANCELLED
+  EXPIRED
+  PAYMENT_FAILED
+}
+
+enum PaymentProviderType {
+  PAYPAL
+  PAYSTACK
+  SIMULATED
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum TicketStatus {
+  VALID
+  USED
+  INVALIDATED
+  CANCELLED
+}
+
+enum ScanOutcome {
+  ACCEPTED
+  INVALID_TICKET
+  ALREADY_USED
+  UNPAID_TICKET
+  CANCELLED_TICKET
+  WRONG_EVENT
+}
+
+enum RefundStatus {
+  REQUESTED
+  UNDER_REVIEW
+  APPROVED
+  PROCESSING
+  SUCCEEDED
+  REJECTED
+  FAILED
+}
+
+enum SettlementStatus {
+  DRAFT
+  RECONCILED
+  DISCREPANCY_FLAGGED
+  SETTLED
+}
+
+enum SupportStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum NotificationStatus {
+  QUEUED
+  PROCESSING
+  SENT
+  FAILED
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  passwordHash      String
+  firstName         String
+  lastName          String
+  phone             String?
+  countryCode       String    @default("KE")
+  preferredCurrency String    @default("KES")
+  role              UserRole  @default(CUSTOMER)
+  isSuspended       Boolean   @default(false)
+  suspendedReason   String?
+  emailVerifiedAt   DateTime?
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  sessions                Session[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+  permissionGrants        AdminPermissionGrant[]
+  orders                  Order[]
+  tickets                 Ticket[]
+  scansPerformed          TicketScan[]           @relation("ScannerOperator")
+  refundsRequested        Refund[]               @relation("RefundRequester")
+  refundsReviewed         Refund[]               @relation("RefundReviewer")
+  supportRequests         SupportRequest[]       @relation("SupportCustomer")
+  supportHandled          SupportRequest[]       @relation("SupportAssignee")
+  auditLogs               AuditLog[]             @relation("AuditActor")
+  notifications           NotificationJob[]
+  reservations            InventoryReservation[]
+
+  @@index([role])
+  @@index([isSuspended])
+  @@index([createdAt])
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  userId       String
+  tokenHash    String    @unique
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AdminPermissionGrant {
+  id         String   @id @default(cuid())
+  userId     String
+  permission String
+  grantedBy  String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+  @@index([permission])
+}
+
+model Venue {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  city              String
+  country           String
+  countryCode       String   @default("KE")
+  address           String?
+  timezone          String   @default("Africa/Nairobi")
+  capacity          Int
+  description       String?
+  entryGuidelines   String?
+  gatesInfo         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  events Event[]
+
+  @@index([city])
+  @@index([countryCode])
+}
+
+model Event {
+  id                   String      @id @default(cuid())
+  slug                 String      @unique
+  title                String
+  competition          String
+  homeTeam             String
+  awayTeam             String
+  homeTeamShort        String
+  awayTeamShort        String
+  homeBadgeColor       String      @default("#35D399")
+  awayBadgeColor       String      @default("#60A5FA")
+  description          String
+  bannerUrl            String?
+  venueId              String
+  kickoffAt            DateTime
+  gatesOpenAt          DateTime?
+  timezone             String      @default("Africa/Nairobi")
+  status               EventStatus @default(DRAFT)
+  isFeatured           Boolean     @default(false)
+  isSampleData         Boolean     @default(false)
+  sampleDataNotice     String?
+  organiserName        String
+  organiserAuthorised  Boolean     @default(false)
+  entryInstructions    String
+  purchaseRestrictions String?
+  officialStatusNotice String?
+  salesStartAt         DateTime?
+  salesEndAt           DateTime?
+  currency             String      @default("KES")
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  venue         Venue          @relation(fields: [venueId], references: [id], onDelete: Restrict)
+  policy        EventPolicy?
+  ticketTypes   TicketType[]
+  orders        Order[]
+  tickets       Ticket[]
+  scans         TicketScan[]
+  settlements   Settlement[]
+  analytics     AnalyticsEvent[]
+
+  @@index([status, kickoffAt])
+  @@index([competition])
+  @@index([venueId])
+  @@index([isFeatured])
+}
+
+model EventPolicy {
+  id                        String   @id @default(cuid())
+  eventId                   String   @unique
+  refundable                Boolean  @default(true)
+  refundCutoffHours         Int      @default(48)
+  refundPolicyText          String
+  postponementPolicyText    String
+  maxTicketsPerCustomer     Int      @default(8)
+  bookingFeeBps             Int      @default(0)
+  bookingFeeFlatMinor       Int      @default(0)
+  taxBps                    Int      @default(0)
+  taxLabel                  String   @default("VAT")
+  requirePhoneNumber        Boolean  @default(true)
+  requireBillingAddress     Boolean  @default(false)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model TicketType {
+  id              String    @id @default(cuid())
+  eventId         String
+  name            String
+  code            String
+  categoryTier    String    @default("STANDARD")
+  description     String
+  sectionInfo     String?
+  seated          Boolean   @default(false)
+  priceMinor      Int
+  currency        String    @default("KES")
+  minPerOrder     Int       @default(1)
+  maxPerOrder     Int       @default(6)
+  salesStartAt    DateTime?
+  salesEndAt      DateTime?
+  isActive        Boolean   @default(true)
+  sortOrder       Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  event       Event                 @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  allocation  InventoryAllocation?
+  orderItems  OrderItem[]
+  tickets     Ticket[]
+  reservations InventoryReservation[]
+
+  @@unique([eventId, code])
+  @@index([eventId, isActive])
+  @@index([priceMinor])
+}
+
+model InventoryAllocation {
+  id                      String              @id @default(cuid())
+  ticketTypeId            String              @unique
+  sourceType              InventorySourceType @default(NATIVE)
+  externalEventRef        String?
+  externalAllocationRef   String?
+  externalEndpointUrl     String?
+  authorisedCapacity      Int
+  reservedCount           Int                 @default(0)
+  soldCount               Int                 @default(0)
+  blockedCount            Int                 @default(0)
+  lastExternalSyncAt      DateTime?
+  version                 Int                 @default(1)
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  ticketType   TicketType             @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
+  reservations InventoryReservation[]
+
+  @@index([sourceType])
+}
+
+model InventoryReservation {
+  id                 String            @id @default(cuid())
+  allocationId       String
+  ticketTypeId       String
+  orderId            String?
+  userId             String?
+  idempotencyKey     String            @unique
+  quantity           Int
+  status             ReservationStatus @default(ACTIVE)
+  externalHoldRef    String?
+  expiresAt          DateTime
+  releasedAt         DateTime?
+  convertedAt        DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  allocation InventoryAllocation @relation(fields: [allocationId], references: [id], onDelete: Restrict)
+  ticketType TicketType          @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
+  order      Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  user       User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, expiresAt])
+  @@index([orderId])
+  @@index([ticketTypeId])
+}
+
+model Order {
+  id                    String      @id @default(cuid())
+  bookingReference      String      @unique
+  accessTokenHash       String
+  userId                String?
+  eventId               String
+  status                OrderStatus @default(PENDING)
+  customerFirstName     String
+  customerLastName      String
+  customerEmail         String
+  customerPhone         String?
+  customerCountry       String      @default("KE")
+  billingAddressLine1   String?
+  billingCity           String?
+  billingPostalCode     String?
+  currency              String
+  subtotalMinor         Int
+  bookingFeeMinor       Int         @default(0)
+  taxMinor              Int         @default(0)
+  totalMinor            Int
+  refundedMinor         Int         @default(0)
+  idempotencyKey        String      @unique
+  isSimulated           Boolean     @default(false)
+  reservationExpiresAt  DateTime
+  paidAt                DateTime?
+  ticketsIssuedAt       DateTime?
+  cancelledAt           DateTime?
+  expiredAt             DateTime?
+  notes                 String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  user         User?                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  event        Event                  @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  items        OrderItem[]
+  reservations InventoryReservation[]
+  payments     Payment[]
+  tickets      Ticket[]
+  refunds      Refund[]
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([status])
+  @@index([customerEmail])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id             String   @id @default(cuid())
+  orderId        String
+  ticketTypeId   String
+  ticketTypeName String
+  quantity       Int
+  unitPriceMinor Int
+  lineTotalMinor Int
+  currency       String
+  createdAt      DateTime @default(now())
+
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
+  tickets    Ticket[]
+
+  @@index([orderId])
+  @@index([ticketTypeId])
+}
+
+model Payment {
+  id                     String              @id @default(cuid())
+  orderId                String
+  provider               PaymentProviderType
+  method                 String?
+  status                 PaymentStatus       @default(INITIATED)
+  amountMinor            Int
+  currency               String
+  settledCurrency        String?
+  settledAmountMinor     Int?
+  fxRateApplied          String?
+  providerOrderId        String?             @unique
+  providerCaptureId      String?             @unique
+  providerReference      String?
+  checkoutUrl            String?
+  idempotencyKey         String              @unique
+  isSimulated            Boolean             @default(false)
+  failureCode            String?
+  failureMessage         String?
+  rawProviderResponse    Json?
+  verifiedAt             DateTime?
+  reconciledAt           DateTime?
+  settlementId           String?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  order         Order                 @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  settlement    Settlement?           @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  webhookEvents PaymentWebhookEvent[]
+  refunds       Refund[]
+
+  @@index([orderId])
+  @@index([provider, status])
+  @@index([providerReference])
+  @@index([createdAt])
+}
+
+model PaymentIdempotency {
+  id             String   @id @default(cuid())
+  key            String   @unique
+  scope          String
+  requestHash    String
+  responseStatus Int
+  responseBody   Json
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model PaymentWebhookEvent {
+  id                String              @id @default(cuid())
+  provider          PaymentProviderType
+  providerEventId   String
+  eventType         String
+  paymentId         String?
+  signatureVerified Boolean             @default(false)
+  processed         Boolean             @default(false)
+  processingError   String?
+  payload           Json
+  receivedAt        DateTime            @default(now())
+  processedAt       DateTime?
+
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerEventId])
+  @@index([processed])
+  @@index([receivedAt])
+}
+
+model Ticket {
+  id                String       @id @default(cuid())
+  ticketNumber      String       @unique
+  orderId           String
+  orderItemId       String
+  eventId           String
+  ticketTypeId      String
+  userId            String?
+  holderName        String
+  holderEmail       String
+  seatSection       String?
+  seatRow           String?
+  seatNumber        String?
+  qrTokenHash       String       @unique
+  qrOpaqueToken     String       @unique
+  status            TicketStatus @default(VALID)
+  isSimulated       Boolean      @default(false)
+  issuedAt          DateTime     @default(now())
+  redeemedAt        DateTime?
+  redeemedGate      String?
+  invalidatedAt     DateTime?
+  invalidatedReason String?
+  lastEmailedAt     DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  orderItem  OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  event      Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  ticketType TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
+  user       User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  scans      TicketScan[]
+
+  @@index([orderId])
+  @@index([eventId, status])
+  @@index([userId])
+}
+
+model TicketScan {
+  id                String      @id @default(cuid())
+  ticketId          String?
+  eventId           String
+  scannedByUserId   String
+  scannedInputRef   String
+  gateName          String      @default("Main Gate")
+  outcome           ScanOutcome
+  message           String
+  ipAddress         String?
+  scannedAt         DateTime    @default(now())
+
+  ticket    Ticket? @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  event     Event   @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  scannedBy User    @relation("ScannerOperator", fields: [scannedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([eventId, scannedAt])
+  @@index([ticketId])
+  @@index([outcome])
+}
+
+model Refund {
+  id                  String       @id @default(cuid())
+  refundReference     String       @unique
+  orderId             String
+  paymentId           String
+  requestedByUserId   String?
+  reviewedByUserId    String?
+  amountMinor         Int
+  currency            String
+  reason              String
+  adminNotes          String?
+  status              RefundStatus @default(REQUESTED)
+  isPartial           Boolean      @default(false)
+  invalidateTickets   Boolean      @default(true)
+  providerRefundId    String?      @unique
+  rawProviderResponse Json?
+  failureReason       String?
+  requestedAt         DateTime     @default(now())
+  reviewedAt          DateTime?
+  processedAt         DateTime?
+  settlementId        String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  payment     Payment     @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  requestedBy User?       @relation("RefundRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  reviewedBy  User?       @relation("RefundReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  settlement  Settlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Settlement {
+  id                     String           @id @default(cuid())
+  settlementReference    String           @unique
+  eventId                String?
+  provider               PaymentProviderType
+  periodStart            DateTime
+  periodEnd              DateTime
+  currency               String
+  grossSalesMinor        Int
+  bookingFeesMinor       Int              @default(0)
+  taxesCollectedMinor    Int              @default(0)
+  refundsTotalMinor      Int              @default(0)
+  providerFeesMinor      Int              @default(0)
+  netCollectedMinor      Int
+  expectedBankPayoutMinor Int
+  actualBankPayoutMinor  Int?
+  discrepancyMinor       Int              @default(0)
+  status                 SettlementStatus @default(DRAFT)
+  notes                  String?
+  reconciledAt           DateTime?
+  settledAt              DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  event    Event?    @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  payments Payment[]
+  refunds  Refund[]
+
+  @@index([eventId])
+  @@index([status])
+  @@index([periodStart, periodEnd])
+}
+
+model SupportRequest {
+  id               String        @id @default(cuid())
+  ticketReference  String        @unique
+  userId           String?
+  assignedToUserId String?
+  bookingReference String?
+  name             String
+  email            String
+  subject          String
+  category         String        @default("GENERAL")
+  message          String
+  staffReply       String?
+  status           SupportStatus @default(OPEN)
+  repliedAt        DateTime?
+  resolvedAt       DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user       User? @relation("SupportCustomer", fields: [userId], references: [id], onDelete: SetNull)
+  assignedTo User? @relation("SupportAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([email])
+  @@index([createdAt])
+}
+
+model NotificationJob {
+  id               String             @id @default(cuid())
+  deduplicationKey String             @unique
+  userId           String?
+  recipientEmail   String
+  templateType     String
+  subject          String
+  htmlBody         String
+  textBody         String
+  status           NotificationStatus @default(QUEUED)
+  attempts         Int                @default(0)
+  maxAttempts      Int                @default(3)
+  nextRetryAt      DateTime           @default(now())
+  providerMessageId String?
+  lastError        String?
+  sentAt           DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextRetryAt])
+  @@index([recipientEmail])
+  @@index([templateType])
+}
+
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  eventType   String
+  eventId     String?
+  orderId     String?
+  sessionAnon String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  event Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, createdAt])
+  @@index([eventId, eventType])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  actorRole   String?
+  action      String
+  entityType  String
+  entityId    String
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([createdAt])
+}
